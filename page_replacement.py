@@ -92,28 +92,68 @@ def Optimal(process_table, dirty_bits, frame_size):
 
 
 def enhance_second_chance(process_table, dirty_bits, frame_size):
+    # implementation url: http://courses.cs.tamu.edu/bart/cpsc410/Supplements/Slides/page-rep3.pdf
+
+    def generate_dict(id, ref_bit, mod_bit):
+        return({'id': id, 'ref': ref_bit, 'mod': mod_bit})
+    
+    def search_victim(frame_queue, frame_id, dirty_bit):
+        # Step a
+        for _ in range(0, 2):
+            for frame_dict in frame_queue:
+                if frame_dict['ref'] == 0 and frame_dict['mod'] == 0:
+                    frame_queue.remove(frame_dict)
+                    frame_queue.append(generate_dict(frame_id, 1, dirty_bit))
+
+                    return frame_queue, 0
+
+            # Step b
+            for index, frame_dict in enumerate(list(frame_queue)):
+                if frame_dict['ref'] == 0 and frame_dict['mod'] == 1:
+                    frame_queue.remove(frame_dict)
+                    frame_queue.append(generate_dict(frame_id, 1, dirty_bit))
+
+                    return frame_queue, 1
+                else:
+                    frame_queue.remove(frame_dict)
+                    frame_dict['ref'] = 0
+                    frame_queue.insert(index, frame_dict)
+                    
+
+
+
     page_fault = 0
     interrupt = 0
     write_back = 0
 
-    frame_queue = Queue(maxsize=frame_size)
+    frame_queue = deque(maxlen=frame_size)
 
     for frame_iter, frame_id in enumerate(process_table):
-        if frame_id in frame_queue.queue:
+
+        # search hit
+        hit_flag = False
+        for frame_dict in frame_queue:
+            if frame_id == frame_dict['id']:
+                hit_flag = True
+                break
+        
+        if hit_flag:
             continue
+        
 
-        if frame_queue.full():
-            print(frame_queue)
-            pass # TODO
+        if len(frame_queue) == frame_size:
+
+            frame_queue, write_flag = search_victim(frame_queue, frame_id, dirty_bits[frame_iter])
+
+            if write_flag:
+                write_back += 1
+                interrupt += 1
         else:
-            frame_size.put(frame_id)
-
+            frame_queue.append(generate_dict(frame_id, 1, dirty_bits[frame_iter]))
+        
         page_fault += 1
         interrupt += 1
-
-        if dirty_bits[frame_iter] == 1:
-            write_back += 1
-            interrupt += 1
+        
     
     return page_fault, interrupt, write_back
 
@@ -124,8 +164,9 @@ if __name__ == '__main__':
 
     for frame_size in FRAME_list:
         start = time.process_time()
-        print("FIFO:", FIFO(process_table, dirty_bits, frame_size))        
-        # print("Opt:", Optimal(process_table, dirty_bits, frame_size))
+        print("FIFO:", FIFO(process_table, dirty_bits, frame_size))
+        print("ESC:", enhance_second_chance(process_table, dirty_bits, frame_size))
+        print("Opt:", Optimal(process_table, dirty_bits, frame_size))
         print("Exec time:", time.process_time() - start)
     
     # plt.plot(range(1, MAX_STRING), [process_table.count(i) for i in range(1, MAX_STRING)])
