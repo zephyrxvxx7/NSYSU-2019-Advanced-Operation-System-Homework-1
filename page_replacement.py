@@ -75,7 +75,7 @@ def Optimal(process_table, dirty_bits, frame_size):
 
             counter = 0
             for index, frame in enumerate(process_table[frame_iter:]):
-                if frame in frame_list:
+                if frame in frame_list and victim_list[frame_list.index(frame)] == 0:
                     victim_list[frame_list.index(frame)] = index
                     counter += 1
 
