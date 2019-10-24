@@ -17,22 +17,16 @@ def random_reference():
 def locality_reference():
     locality_table = list()
 
-    interval = random.randint(MAX_STRING * 0.05, MAX_STRING * 0.1)
-    interval_loc = random.randint(1, MAX_STRING)
+    while(len(locality_table) <= MEMORY_REFERENCE_TIMES):
+        interval_range = random.randint(MAX_STRING * 0.05, MAX_STRING * 0.1)
+        interval_loc = random.randint(1, MAX_STRING)
 
-    if interval_loc + interval < MAX_STRING:
-        interval_range = range(interval_loc, interval_loc + interval)
-    else:
-        interval_range = range(interval_loc + interval, interval_loc, -1)
+        if interval_loc + interval_range <= MAX_STRING:
+            locality_table.extend([random.randint(interval_loc, interval_loc + interval_range) for _ in range(random.randint(500, 1000))])
+        else:
+            locality_table.extend([random.randint(interval_loc - interval_range, interval_loc) for _ in range(random.randint(500, 1000))])
 
-    for i in interval_range:
-        locality_table.extend([i for _ in range(0, random.randint(500, 1000))])
-
-    locality_table.extend([random.randint(1, MAX_STRING) for _ in range(MEMORY_REFERENCE_TIMES - len(locality_table))])
-    
-    random.shuffle(locality_table)
-
-    return locality_table
+    return locality_table[:MEMORY_REFERENCE_TIMES]
 
 def random_dirty_bits():
     return [random.randint(0, 1) for _ in range(MEMORY_REFERENCE_TIMES)]
@@ -173,14 +167,14 @@ def enhance_second_chance(process_table, dirty_bits, frame_size):
 
 
 if __name__ == '__main__':
-    process_table = locality_reference()
+    frmae_table = locality_reference()
     dirty_bits = random_dirty_bits()
 
     for frame_size in FRAME_list:
         start = time.process_time()
-        print("FIFO:", FIFO(process_table, dirty_bits, frame_size))
-        print("ESC:", enhance_second_chance(process_table, dirty_bits, frame_size))
-        print("Opt:", Optimal(process_table, dirty_bits, frame_size))
+        print("FIFO:", FIFO(frmae_table, dirty_bits, frame_size))
+        print("ESC:", enhance_second_chance(frmae_table, dirty_bits, frame_size))
+        print("Opt:", Optimal(frmae_table, dirty_bits, frame_size))
         print("Exec time:", time.process_time() - start)
     
     # plt.plot(range(1, MAX_STRING), [process_table.count(i) for i in range(1, MAX_STRING)])
