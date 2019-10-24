@@ -1,10 +1,10 @@
 import random
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from queue import Queue
 from collections import deque
 import time
 
-plt.style.use('ggplot')
+#plt.style.use('ggplot')
 
 MAX_STRING = 500
 MEMORY_REFERENCE_TIMES = 100000
@@ -15,7 +15,24 @@ def random_reference():
     return [random.randint(1, MAX_STRING) for _ in range(MEMORY_REFERENCE_TIMES)]
 
 def locality_reference():
-    pass
+    locality_table = list()
+
+    interval = random.randint(MAX_STRING * 0.05, MAX_STRING * 0.1)
+    interval_loc = random.randint(1, MAX_STRING)
+
+    if interval_loc + interval < MAX_STRING:
+        interval_range = range(interval_loc, interval_loc + interval)
+    else:
+        interval_range = range(interval_loc + interval, interval_loc, -1)
+
+    for i in interval_range:
+        locality_table.extend([i for _ in range(0, random.randint(500, 1000))])
+
+    locality_table.extend([random.randint(1, MAX_STRING) for _ in range(MEMORY_REFERENCE_TIMES - len(locality_table))])
+    
+    random.shuffle(locality_table)
+
+    return locality_table
 
 def random_dirty_bits():
     return [random.randint(0, 1) for _ in range(MEMORY_REFERENCE_TIMES)]
@@ -98,8 +115,8 @@ def enhance_second_chance(process_table, dirty_bits, frame_size):
         return({'id': id, 'ref': ref_bit, 'mod': mod_bit})
     
     def search_victim(frame_queue, frame_id, dirty_bit):
-        # Step a
         for _ in range(0, 2):
+            # Step a
             for frame_dict in frame_queue:
                 if frame_dict['ref'] == 0 and frame_dict['mod'] == 0:
                     frame_queue.remove(frame_dict)
@@ -118,9 +135,6 @@ def enhance_second_chance(process_table, dirty_bits, frame_size):
                     frame_queue.remove(frame_dict)
                     frame_dict['ref'] = 0
                     frame_queue.insert(index, frame_dict)
-                    
-
-
 
     page_fault = 0
     interrupt = 0
@@ -159,7 +173,7 @@ def enhance_second_chance(process_table, dirty_bits, frame_size):
 
 
 if __name__ == '__main__':
-    process_table = random_reference()
+    process_table = locality_reference()
     dirty_bits = random_dirty_bits()
 
     for frame_size in FRAME_list:
