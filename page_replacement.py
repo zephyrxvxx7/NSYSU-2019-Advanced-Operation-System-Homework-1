@@ -1,16 +1,30 @@
 import random
 from collections import deque
 import time
+import argparse
+
+parser = argparse.ArgumentParser(
+    description='Page replacement simulator.\nRecommend use pypy3 execute this program.', formatter_class=argparse.RawTextHelpFormatter)
+
+parser.add_argument('mode', metavar='mode',
+                    help="Select random reference strings mode\n'random': random reference\n'locality': locality reference\n'normal': normal distribution reference")
+
+parser.add_argument('-m', dest='MAX_STRING', type=int,
+                    help='Set the max number of reference string (default: 500)')
+
+parser.add_argument('-r', dest='REFERENCE_TIMES', type=int,
+                    help='Set the times of reference string (default: 100000)')
+
 
 MAX_STRING = 500
 MEMORY_REFERENCE_TIMES = 100000
 FRAME_list = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
-
+# Generate random reference string 
 def random_reference():
     return [random.randint(1, MAX_STRING) for _ in range(MEMORY_REFERENCE_TIMES)]
 
-
+# Generate locality reference string
 def locality_reference():
     locality_table = list()
 
@@ -27,8 +41,8 @@ def locality_reference():
 
     return locality_table[:MEMORY_REFERENCE_TIMES]
 
-
-def random_noramlvariate():
+# Generate normal distribution reference string
+def normalvariate_reference():
     noramlvariate_table = list()
 
     for _ in range(MEMORY_REFERENCE_TIMES):
@@ -44,6 +58,17 @@ def random_dirty_bits():
     return [random.randint(0, 1) for _ in range(MEMORY_REFERENCE_TIMES)]
 
 
+def handle_hit_frame(frame_id, dirty_bit, frame_queue):
+    for frame_dict in frame_queue:
+        if frame_id == frame_dict['id']:
+            if dirty_bit:
+                frame_queue[frame_queue.index(frame_dict)]['mod'] = 1
+
+            return True
+    
+    return False
+
+
 def FIFO(process_table, dirty_bits, frame_size):
     page_fault = 0
     interrupt = 0
@@ -52,17 +77,7 @@ def FIFO(process_table, dirty_bits, frame_size):
     frame_queue = deque(maxlen=frame_size)
 
     for frame_iter, frame_id in enumerate(process_table):
-        hit_flag = False
-        for frame_dict in frame_queue:
-            if frame_id == frame_dict['id']:
-                temp_dict = frame_dict
-                if dirty_bits[frame_iter]:
-                    temp_dict['mod'] = dirty_bits[frame_iter]
-                frame_queue[frame_queue.index(frame_dict)] = temp_dict
-                hit_flag = True
-                break
-
-        if hit_flag:
+        if handle_hit_frame(frame_id, dirty_bits[frame_iter], frame_queue):
             continue
 
         if len(frame_queue) == frame_size:
@@ -70,22 +85,31 @@ def FIFO(process_table, dirty_bits, frame_size):
                 write_back += 1
                 interrupt += 1
 
-        temp_dict = dict()
-        temp_dict['id'] = frame_id
-        temp_dict['mod'] = dirty_bits[frame_iter]
-        frame_queue.append(temp_dict)
+        frame_queue.append({'id': frame_id, 'mod': dirty_bits[frame_iter]})
 
         page_fault += 1
         interrupt += 1
 
-    return page_fault, interrupt, write_back
+    return [page_fault, interrupt, write_back]
 
 
 def Optimal(process_table, dirty_bits, frame_size):
-    page_fault = 0
-    interrupt = 0
-    write_back = 0
 
+    def search_victim(frame_iter, frame_id, frame_list):
+        victim_list = list([0] * frame_size)
+
+        counter = 0
+        for index, frame in enumerate(process_table[frame_iter:]):
+            if frame in frame_list and victim_list[frame_list.index(frame)] == 0:
+                victim_list[frame_list.index(frame)] = index
+                counter += 1
+
+            if counter == frame_size - 1:
+                break
+
+        return victim_list.index(0)
+
+    page_fault = 0
     frame_list = []
 
     for frame_iter, frame_id in enumerate(process_table):
@@ -93,64 +117,33 @@ def Optimal(process_table, dirty_bits, frame_size):
             continue
 
         if len(frame_list) == frame_size:
-            victim_list = list([0] * frame_size)
-            victim_index = 0
-
-            counter = 0
-            for index, frame in enumerate(process_table[frame_iter:]):
-                if frame in frame_list and victim_list[frame_list.index(frame)] == 0:
-                    victim_list[frame_list.index(frame)] = index
-                    counter += 1
-
-                if counter == frame_size - 1:
-                    break
-
-            for index, _ in enumerate(victim_list):
-                if victim_list[index] == 0:
-                    victim_list[index] = MEMORY_REFERENCE_TIMES
-
-            victim_index = victim_list.index(max(victim_list))
-            frame_list[victim_index] = frame_id
+            frame_list[search_victim(frame_iter, frame_id, frame_list)] = frame_id
         else:
             frame_list.append(frame_id)
 
         page_fault += 1
-        interrupt += 1
 
-        if dirty_bits[frame_iter] == 1:
-            write_back += 1
-            interrupt += 1
-
-    return page_fault, interrupt, write_back
+    return [page_fault]
 
 
 def enhance_second_chance(process_table, dirty_bits, frame_size):
     # implementation url: http://courses.cs.tamu.edu/bart/cpsc410/Supplements/Slides/page-rep3.pdf
 
-    def generate_dict(id, ref_bit, mod_bit):
-        return({'id': id, 'ref': ref_bit, 'mod': mod_bit})
-
-    def search_victim(frame_queue, frame_id, dirty_bit):
+    def search_victim(frame_queue, frame_id):
         for _ in range(0, 2):
             # Step a
             for frame_dict in frame_queue:
                 if frame_dict['ref'] == 0 and frame_dict['mod'] == 0:
                     frame_queue.remove(frame_dict)
-                    frame_queue.append(generate_dict(frame_id, 1, dirty_bit))
-
-                    return frame_queue, 0
+                    return False
 
             # Step b
             for index, frame_dict in enumerate(list(frame_queue)):
                 if frame_dict['ref'] == 0 and frame_dict['mod'] == 1:
                     frame_queue.remove(frame_dict)
-                    frame_queue.append(generate_dict(frame_id, 1, dirty_bit))
-
-                    return frame_queue, 1
+                    return True
                 else:
-                    frame_queue.remove(frame_dict)
-                    frame_dict['ref'] = 0
-                    frame_queue.insert(index, frame_dict)
+                    frame_queue[index]['ref'] = 0
 
     page_fault = 0
     interrupt = 0
@@ -159,33 +152,22 @@ def enhance_second_chance(process_table, dirty_bits, frame_size):
     frame_queue = deque(maxlen=frame_size)
 
     for frame_iter, frame_id in enumerate(process_table):
-
-        # search hit
-        hit_flag = False
-        for frame_dict in frame_queue:
-            if frame_id == frame_dict['id']:
-                hit_flag = True
-                break
-
-        if hit_flag:
+        if handle_hit_frame(frame_id, dirty_bits[frame_iter], frame_queue):
             continue
 
         if len(frame_queue) == frame_size:
-
-            frame_queue, write_flag = search_victim(frame_queue, frame_id, dirty_bits[frame_iter])
-
-            if write_flag:
+            if(search_victim(frame_queue, frame_id)):
                 write_back += 1
                 interrupt += 1
 
-        frame_queue.append(generate_dict(frame_id, 1, dirty_bits[frame_iter]))
+        frame_queue.append({'id': frame_id, 'ref': 1, 'mod': dirty_bits[frame_iter]})
 
         page_fault += 1
         interrupt += 1
 
-    return page_fault, interrupt, write_back
+    return [page_fault, interrupt, write_back]
 
-
+# Not used
 def enhance_FIFO(process_table, dirty_bits, frame_size):
     page_fault = 0
     interrupt = 0
@@ -212,9 +194,9 @@ def enhance_FIFO(process_table, dirty_bits, frame_size):
             write_back += 1
             interrupt += 1
 
-    return page_fault, interrupt, write_back
+    return [page_fault, interrupt, write_back]
 
-
+# Own algorithm, dirty frame is high priority not to kick out.
 def QQ(process_table, dirty_bits, frame_size):
     page_fault = 0
     interrupt = 0
@@ -223,17 +205,7 @@ def QQ(process_table, dirty_bits, frame_size):
     frame_queue = deque(maxlen=frame_size)
 
     for frame_iter, frame_id in enumerate(process_table):
-        hit_flag = False
-        for frame_dict in frame_queue:
-            if frame_id == frame_dict['id']:
-                temp_dict = frame_dict
-                if dirty_bits[frame_iter]:
-                    temp_dict['mod'] = 1
-                frame_queue[frame_queue.index(frame_dict)] = temp_dict
-                hit_flag = True
-                break
-
-        if hit_flag:
+        if handle_hit_frame(frame_id, dirty_bits[frame_iter], frame_queue):
             continue
 
         if len(frame_queue) == frame_size:
@@ -247,26 +219,44 @@ def QQ(process_table, dirty_bits, frame_size):
                 write_back += 1
                 interrupt += 1
 
-        temp = dict()
-        temp['id'] = frame_id
-        temp['mod'] = dirty_bits[frame_iter]
-        frame_queue.append(temp)
+        frame_queue.append({'id': frame_id, 'mod': dirty_bits[frame_iter]})
 
         page_fault += 1
         interrupt += 1
 
-    return page_fault, interrupt, write_back
+    return [page_fault, interrupt, write_back]
 
 
 if __name__ == '__main__':
-    frmae_table = random_reference()
+    args = parser.parse_args()
+
+    if args.MAX_STRING:
+        MAX_STRING = args.MAX_STRING
+    if args.REFERENCE_TIMES:
+        MEMORY_REFERENCE_TIMES = args.REFERENCE_TIMES
+    
+    if args.mode == "random":
+        frmae_table = random_reference()
+    elif args.mode == "locality":
+        frmae_table = locality_reference()
+    elif args.mode == "normal":
+        frmae_table = normalvariate_reference()
+    else:
+        parser.print_help()
+        exit(2)
+    
     dirty_bits = random_dirty_bits()
 
-    for frame_size in FRAME_list:
-        start = time.process_time()
-        print("FIFO:", FIFO(frmae_table, dirty_bits, frame_size))
-        print("ESC:", enhance_second_chance(frmae_table, dirty_bits, frame_size))
-        print("MYAL:", QQ(frmae_table, dirty_bits, frame_size))
-        print("Opt:", Optimal(frmae_table, dirty_bits, frame_size))
-        print("Exec time:", time.process_time() - start)
+    def handle_print(result):
+        return "\t\t".join(map(str, result))
 
+    print("\t\tPage Fault\tInterrupt\tWrite Back")
+    for frame_size in FRAME_list:
+        print(f"[Frame size: {frame_size}]")
+
+        start = time.process_time()
+        print("FIFO:\t\t", handle_print(FIFO(frmae_table, dirty_bits, frame_size)))
+        print("ESC:\t\t", handle_print(enhance_second_chance(frmae_table, dirty_bits, frame_size)))
+        print("MYAL:\t\t", handle_print(QQ(frmae_table, dirty_bits, frame_size)))
+        print("Opt:\t\t", handle_print(Optimal(frmae_table, dirty_bits, frame_size)))
+        print(f"\nExec time:\t {time.process_time() - start}s\n")
